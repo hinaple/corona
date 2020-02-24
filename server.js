@@ -5,9 +5,41 @@ const logger = require('morgan');
 const async = require('async');
 const cheerio = require('cheerio');
 
+const NAVER_ID = "FOR GITHUB";
+const NAVER_PW = "FOR GITHUB";
+
+const newsOpt = {
+    uri: "https://openapi.naver.com/v1/search/news.json",
+    qs: {
+        query: "폐렴",
+        display: 5,
+        start: 1,
+        sort: "sim"
+    },
+    headers: {
+        "X-Naver-Client-Id": NAVER_ID,
+        "X-Naver-Client-Secret": NAVER_PW
+    }
+};
+
+let shourl = str => new Promise((resolve, reject) => {
+    request.post({
+        url: 'https://openapi.naver.com/v1/util/shorturl.json',
+        method: 'POST',
+        headers: {
+            "X-Naver-Client-Id": NAVER_ID,
+            "X-Naver-Client-Secret": NAVER_PW
+        },
+        form: { url: str }
+    }, (err, res, result) => {
+        if(err) resolve(str);
+        else resolve(JSON.parse(result).result.url);
+    });
+});
+
 const tasks0 = [
     (callback) => {
-        request('http://ncov.mohw.go.kr/bdBoardList.do', (err, res, body) => {
+        request('http://ncov.mohw.go.kr/bdBoardList_Real.do?brdId=&brdGubun=&ncvContSeq=&contSeq=&board_id=&gubun=', (err, res, body) => {
             if(err) callback(err);
             callback(null, body);
         });
@@ -69,7 +101,7 @@ app.use(logger('dev', {}));
 
 app.post('/corona', (res, req) => {
     async.waterfall(tasks0, (err, output) => {
-        if(err) req.status(502).send({ text: "예상치 못한 오류로 인해 정보 제공이 지연되고 있습니다.\n잠시 후 다시 시도해주십시오." });
+        if(err) req.status(502).send();
         else {
             req.status(200).send(output);
         }
@@ -78,12 +110,26 @@ app.post('/corona', (res, req) => {
 
 app.post('/asia', (res, req) => {
     async.waterfall(tasks1, (err, output) => {
-        if(err) req.status(502).send({ text: "예상치 못한 오류로 인해 정보 제공이 지연되고 있습니다.\n잠시 후 다시 시도해주십시오." });
+        if(err) req.status(502).send();
         else {
             output.cnp = String(Math.round(Number(output.cn) / 1386000000 * 100000000) / 1000000);
             output.krp = String(Math.round(Number(output.kr) / 51470000 * 100000000) / 1000000);
             output.jpp = String(Math.round(Number(output.jp) / 126800000 * 100000000) / 1000000);
             req.status(200).send(output);
+        }
+    });
+});
+
+app.post('/news', (res, req) => {
+    request(newsOpt, async (err, response, data) => {
+        if(err) req.status(502).send();
+        else {
+            data = JSON.parse(data);
+            for(let i = 0; i < data.items.length; i++) {
+                data['title' + i] = data.items[i].title.replace(/\<.+?\>|\&.+?\;/g, "");
+                data['link' + i] = await shourl(data.items[i].link);
+            }
+            req.status(200).send(data);
         }
     });
 });
