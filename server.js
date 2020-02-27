@@ -4,6 +4,7 @@ const app = express();
 const logger = require('morgan');
 const async = require('async');
 const cheerio = require('cheerio');
+require('events').EventEmitter.defaultMaxListeners = 15;
 
 const NAVER_ID = "FOR GITHUB";
 const NAVER_PW = "FOR GITHUB";
@@ -11,10 +12,10 @@ const NAVER_PW = "FOR GITHUB";
 const newsOpt = {
     uri: "https://openapi.naver.com/v1/search/news.json",
     qs: {
-        query: "폐렴",
+        query: "폐렴 확진자",
         display: 5,
         start: 1,
-        sort: "sim"
+        sort: "date"
     },
     headers: {
         "X-Naver-Client-Id": NAVER_ID,
@@ -40,30 +41,22 @@ let shourl = str => new Promise((resolve, reject) => {
 const tasks0 = [
     (callback) => {
         request('http://ncov.mohw.go.kr/bdBoardList_Real.do?brdId=&brdGubun=&ncvContSeq=&contSeq=&board_id=&gubun=', (err, res, body) => {
-            if(err) callback(err);
-            callback(null, body);
+            if(err) {
+                callback(err);
+                console.log(err);
+            }
+            else callback(null, body);
         });
     },
     (body, callback) => {
-        const $ = cheerio.load(body);
-        callback(null, [$(".s_listin_dot").children("li"), $(".s_descript")]);
-    },
-    (info, callback) => {
         let obj = {};
-        obj.title = info[1][0].children[0].data;
-        for(let i = 0; i < 4; i++) {
-            obj[
-                info[0][i]
-                .children[0]
-                .data
-                .replace(/\((.+?)\)\s(?:.+)명/, "$1")
-                .replace(/\s/g, "")
-            ]
-            = info[0][i]
-            .children[0]
-            .data
-            .replace(/\((?:.+?)\)\s(.+)명/, "$1")
-            .replace(/\,/g, "");
+        const $ = cheerio.load(body);
+        obj.title = $(".s_descript")[0].children[0].data;
+        let trs = $(".num").children("tbody").children('tr').children('th, td');
+        let temp = null;
+        for(let i = 0; i < 8; i++) {
+            if(i % 2 == 0) temp = trs[i].children[0].data.trim();
+            else obj[temp] = trs[i].children[0].data.trim().replace(/\,/g, "").replace(/(\d+)\s*명/, "$1");
         }
         callback(null, obj);
     }
@@ -71,31 +64,48 @@ const tasks0 = [
 
 const tasks1 = [
     tasks0[0],
-    tasks0[1],
-    (info, callback) => {
+    (body, callback) => {
         let obj = {};
-        obj.title = info[1][1].children[0].data;
-        //Korea
-        obj.kr = info[0][0]
-        .children[0]
-        .data
-        .replace(/\((?:.+?)\)\s(.+)명/, "$1")
-        .replace(/\,/g, "");
-        //China
-        obj.cn = info[0][4]
-        .children[0]
-        .data
-        .replace(/\(중국\)\s(.+)명.+/, "$1")
-        .replace(/\,/g, "");
-        //Japan
-        obj.jp = info[0][5]
-        .children[0]
-        .data
-        .replace(/.+?일본\s(.+?)명.+/, "$1")
-        .replace(/\,/g, "");
+        const $ = cheerio.load(body);
+        let trs = $(".num").children("tbody").children('tr').children('td');
+        obj.title = $(".s_descript")[1].children[0].data;
+        obj.한국 = trs[0].children[0].data.trim().replace(/\,/g, "").replace(/(\d+)\s*명/, "$1")
+        let temp = null;
+        for(let i = 4; i < trs.length; i++) {
+            if(i % 2 == 0) temp = trs[i].children[0].data.trim();
+            else obj[temp] = trs[i].children[0].data.trim().replace(/\,/g, "").replace(/(\d+)\s*명\s*(?:\(.+\))?/, "$1");
+        }
+        let str = obj.title + "\n\n";
+        for(let c in obj) {
+            if(c == "title") continue;
+            str += c + ": " + obj[c] + "명\n";
+        }
+        obj.total = str.trim();
         callback(null, obj);
     }
 ];
+
+//개발 예정
+/*const tasks2 = [
+    (callback) => {
+        request('https://wuhanvirus.kr/', (err, res, body) => {
+            if(err) callback(err);
+            else callback(null, body);
+        });
+    },
+    (body, callback) => {
+        const $ = cheerio.load(body);
+        callback(null, $('#korea-table').find('tr').each((index, elem) => {
+            console.log(1);
+            $(this).find('td').each((index1, elem1) => {
+                console.log($(this).text);
+            });
+        }));
+    },
+    (data, callback) => {
+        callback(null, data);
+    }
+];*/
 
 app.use(logger('dev', {}));
 
@@ -112,9 +122,9 @@ app.post('/asia', (res, req) => {
     async.waterfall(tasks1, (err, output) => {
         if(err) req.status(502).send();
         else {
-            output.cnp = String(Math.round(Number(output.cn) / 1386000000 * 100000000) / 1000000);
-            output.krp = String(Math.round(Number(output.kr) / 51470000 * 100000000) / 1000000);
-            output.jpp = String(Math.round(Number(output.jp) / 126800000 * 100000000) / 1000000);
+            output.cnp = String(Math.round(Number(output.중국) / 1386000000 * 100000000) / 1000000);
+            output.krp = String(Math.round(Number(output.한국) / 51470000 * 100000000) / 1000000);
+            output.jpp = String(Math.round(Number(output.일본) / 126800000 * 100000000) / 1000000);
             req.status(200).send(output);
         }
     });
@@ -133,6 +143,13 @@ app.post('/news', (res, req) => {
         }
     });
 });
+
+//개발 예정
+/*app.post('/locate', (res, req) => {
+    async.waterfall(tasks2, (err, output) => {
+        req.status(200).send("1");
+    })
+})*/
 
 app.listen(91, () => {
     console.log("server is running on port 91");
