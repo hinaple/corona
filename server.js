@@ -23,7 +23,7 @@ const newsOpt = {
     }
 };
 
-let shourl = str => new Promise((resolve, reject) => {
+/*let shourl = str => new Promise((resolve, reject) => {
     request.post({
         url: 'https://openapi.naver.com/v1/util/shorturl.json',
         method: 'POST',
@@ -36,7 +36,7 @@ let shourl = str => new Promise((resolve, reject) => {
         if(err) resolve(str);
         else resolve(JSON.parse(result).result.url);
     });
-});
+});*/ //채팅 유형이 바뀌면서 단축 url의 필요성 저하(3번째 커밋부터 삭제될 예정)
 
 const tasks0 = [
     (callback) => {
@@ -118,28 +118,6 @@ const tasks3 = [
     }
 ];
 
-//개발 예정
-/*const tasks2 = [
-    (callback) => {
-        request('https://wuhanvirus.kr/', (err, res, body) => {
-            if(err) callback(err);
-            else callback(null, body);
-        });
-    },
-    (body, callback) => {
-        const $ = cheerio.load(body);
-        callback(null, $('#korea-table').find('tr').each((index, elem) => {
-            console.log(1);
-            $(this).find('td').each((index1, elem1) => {
-                console.log($(this).text);
-            });
-        }));
-    },
-    (data, callback) => {
-        callback(null, data);
-    }
-];*/
-
 app.use(logger('dev', {}));
 
 app.post('/corona', (res, req) => {
@@ -155,11 +133,6 @@ app.post('/world', (res, req) => {
     async.waterfall(tasks1, (err, output) => {
         if(err) req.status(502).send();
         else {
-            /*
-            output.cnp = String(Math.round(Number(output.중국) / 1386000000 * 100000000) / 1000000);
-            output.krp = String(Math.round(Number(output.한국) / 51470000 * 100000000) / 1000000);
-            output.jpp = String(Math.round(Number(output.일본) / 126800000 * 100000000) / 1000000);
-            */
             req.status(200).send(output);
         }
     });
@@ -170,11 +143,32 @@ app.post('/news', (res, req) => {
         if(err) req.status(502).send();
         else {
             data = JSON.parse(data);
-            for(let i = 0; i < data.items.length; i++) {
-                data['title' + i] = data.items[i].title.replace(/\<.+?\>|\&.+?\;/g, "");
-                data['link' + i] = await shourl(data.items[i].link);
+            let temp = {
+                version: "2.0",
+                template: {
+                    outputs: [{
+                        listCard: {
+                            header: { 
+                                title: "Corona News",
+                                imageUrl: "https://i.ibb.co/TPnpmqC/news.jpg"
+                            },
+                            items: [],
+                            buttons: [{
+                                label: "공유하기",
+                                action: "share"
+                            }]
+                        }
+                    }]
+                }
             }
-            req.status(200).send(data);
+            for(let i = 0; i < data.items.length; i++) {
+                temp.template.outputs[0].listCard.items.push({
+                    title: data.items[i].title.replace(/\<.+?\>|\&.+?\;/g, ""),
+                    link: { web: data.items[i].link },
+                    description: data.items[i].description.replace(/\<.+?\>|\&.+?\;/g, "")
+                });
+            }
+            req.status(200).send(temp);
         }
     });
 });
@@ -187,13 +181,6 @@ app.post('/center', (res, req) => {
         }
     });
 });
-
-//개발 예정
-/*app.post('/locate', (res, req) => {
-    async.waterfall(tasks2, (err, output) => {
-        req.status(200).send("1");
-    })
-})*/
 
 app.listen(91, () => {
     console.log("server is running on port 91");
