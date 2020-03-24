@@ -4,10 +4,15 @@ const app = express();
 const logger = require('morgan');
 const async = require('async');
 const cheerio = require('cheerio');
+const { createCanvas } = require('canvas');
+const ImageDataURI = require('image-data-uri');
+
 require('events').EventEmitter.defaultMaxListeners = 15;
 
-const NAVER_ID = "FOR_GITHUB";
-const NAVER_PW = "FOR_GITHUB";
+const NAVER_ID = "FOT_GITHUB";
+const NAVER_PW = "FOT_GITHUB";
+
+app.use("/f", express.static("public"));
 
 const newsOpt = {
     uri: "https://openapi.naver.com/v1/search/news.json",
@@ -118,13 +123,88 @@ const tasks3 = [
     }
 ];
 
+let makePng = (title, info0, info1, info2, info3) => new Promise((resolve, reject) => {
+    const canvas = createCanvas(600, 300);
+    const ctx = canvas.getContext('2d');
+    
+    let grd = ctx.createLinearGradient(0, 0, 600, 300);
+    grd.addColorStop(1, "#b34f93");
+    grd.addColorStop(0, "#640064");
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 600, 300);
+    grd = ctx.createLinearGradient(0, 0, 600, 300);
+    grd.addColorStop(0, "#ff00ff");
+    grd.addColorStop(1, "#ff7575");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(550, 200, 250, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "30px Jua,sans-serif";
+    ctx.textAlign = "left";
+    ctx.shadowColor = "#000";
+    ctx.shadowBlur = 7;
+    ctx.fillText('확진자', 110, 80);
+    ctx.font = "bold 50px 'Jua',sans-serif";
+    ctx.fillText(info0 + '명', 200, 80);
+    
+    ctx.font = "30px 'Jua',sans-serif";
+    ctx.fillText('완치자', 110, 130);
+    ctx.font = "bold 50px 'Jua',sans-serif";
+    ctx.fillText(info1 + '명', 200, 130);
+
+    ctx.font = "30px 'Jua',sans-serif";
+    ctx.fillText('사망자', 110, 180);
+    ctx.font = "bold 50px 'Jua',sans-serif";
+    ctx.fillText(info2 + '명', 200, 180);
+
+    ctx.font = "30px 'Jua',sans-serif";
+    ctx.fillText('의심자', 110, 230);
+    ctx.font = "bold 50px 'Jua',sans-serif";
+    ctx.fillText(info3 + '명', 200, 230);
+
+    ctx.fillRect(85, 45, 5, 190);
+
+    ctx.shadowBlur = 0;
+    ctx.baseLine = "bottom";
+    ctx.textAlign = "right";
+    ctx.font = 'bold 15px Jua,sans-serif';
+    ctx.fillText(title, 595, 295);
+    ctx.fillText('http://pf.kakao.com/_NBxgxbxb', 595, 275);
+
+    dataUrl = canvas.toDataURL('image/png');
+    ImageDataURI.outputFile(dataUrl, "public/koreainfo").then(result => {
+        resolve();
+    });
+});
+
 app.use(logger('dev', {}));
 
 app.post('/corona', (res, req) => {
-    async.waterfall(tasks0, (err, output) => {
+    async.waterfall(tasks0, async (err, output) => {
         if(err) req.status(502).send();
         else {
-            req.status(200).send(output);
+            let obj = {
+                version: "2.0",
+                template: {
+                    outputs: [{
+                        basicCard: {
+                            title: output.title,
+                            description: "확진환자: " + output["0"] + "명\n격리 해제 조치 확진자: " + output["1"] + "명\n사망자: " + output["3"] + "명\n검사 진행자: " + output["2"] + "명",
+                            thumbnail: {
+                                imageUrl: "http://15.165.6.4:91/f/koreainfo.png",
+                                link: { web: "http://15.165.6.4:91/f/koreainfo.png" }
+                            },
+                            buttons: [{
+                                action: "share",
+                                label: "공유하기"
+                            }]
+                        }
+                    }]
+                }
+            };
+            await makePng(output.title, output["0"], output["1"], output["3"], output["2"]);
+            req.status(200).send(obj);
         }
     });
 });
@@ -139,7 +219,7 @@ app.post('/world', (res, req) => {
 });
 
 app.post('/news', (res, req) => {
-    request(newsOpt, async (err, response, data) => {
+    request(newsOpt, (err, response, data) => {
         if(err) req.status(502).send();
         else {
             data = JSON.parse(data);
@@ -149,8 +229,8 @@ app.post('/news', (res, req) => {
                     outputs: [{
                         listCard: {
                             header: { 
-                                title: "Corona News",
-                                imageUrl: "https://i.ibb.co/TPnpmqC/news.jpg"
+                                title: "코로나 관련 뉴스",
+                                imageUrl: "http://15.165.6.4:91/f/news.jpg"
                             },
                             items: [],
                             buttons: [{
