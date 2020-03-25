@@ -9,8 +9,8 @@ const ImageDataURI = require('image-data-uri');
 
 require('events').EventEmitter.defaultMaxListeners = 15;
 
-const NAVER_ID = "FOT_GITHUB";
-const NAVER_PW = "FOT_GITHUB";
+const NAVER_ID = "FOR_GITHUB";
+const NAVER_PW = "FOR_GITHUB";
 
 app.use("/f", express.static("public"));
 
@@ -28,21 +28,6 @@ const newsOpt = {
     }
 };
 
-/*let shourl = str => new Promise((resolve, reject) => {
-    request.post({
-        url: 'https://openapi.naver.com/v1/util/shorturl.json',
-        method: 'POST',
-        headers: {
-            "X-Naver-Client-Id": NAVER_ID,
-            "X-Naver-Client-Secret": NAVER_PW
-        },
-        form: { url: str }
-    }, (err, res, result) => {
-        if(err) resolve(str);
-        else resolve(JSON.parse(result).result.url);
-    });
-});*/ //채팅 유형이 바뀌면서 단축 url의 필요성 저하(3번째 커밋부터 삭제될 예정)
-
 const tasks0 = [
     (callback) => {
         request('http://ncov.mohw.go.kr/bdBoardList_Real.do?brdId=&brdGubun=&ncvContSeq=&contSeq=&board_id=&gubun=', (err, res, body) => {
@@ -59,7 +44,9 @@ const tasks0 = [
         obj.title = $(".s_descript")[0].children[0].data;
         let trs = $(".num").children("tbody").children('tr').children('td');
         for(let i = 0; i < 4; i++) {
-            obj[i.toString()] = trs[i].children[0].data.trim().replace(/\,/g, "").replace(/(\d+)\s*명/, "$1");
+            obj[i.toString()]
+            = trs[i].children[0].data.trim().replace(/\,/g, "")
+            .replace(/(\d+)\s*명/, "$1");
         }
         callback(null, obj);
     }
@@ -159,7 +146,7 @@ let makePng = (title, info0, info1, info2, info3) => new Promise((resolve, rejec
     ctx.fillText(info2 + '명', 200, 180);
 
     ctx.font = "30px 'Jua',sans-serif";
-    ctx.fillText('의심자', 110, 230);
+    ctx.fillText('격리자', 110, 230);
     ctx.font = "bold 50px 'Jua',sans-serif";
     ctx.fillText(info3 + '명', 200, 230);
 
@@ -173,7 +160,7 @@ let makePng = (title, info0, info1, info2, info3) => new Promise((resolve, rejec
     ctx.fillText('http://pf.kakao.com/_NBxgxbxb', 595, 275);
 
     dataUrl = canvas.toDataURL('image/png');
-    ImageDataURI.outputFile(dataUrl, "public/koreainfo").then(result => {
+    ImageDataURI.outputFile(dataUrl, "public/kinfo" + Buffer.from(title.replace(/.+?\((.+?)\)/, "$1"), "utf8").toString('base64')).then(result => {
         resolve();
     });
 });
@@ -190,10 +177,10 @@ app.post('/corona', (res, req) => {
                     outputs: [{
                         basicCard: {
                             title: output.title,
-                            description: "확진환자: " + output["0"] + "명\n격리 해제 조치 확진자: " + output["1"] + "명\n사망자: " + output["3"] + "명\n검사 진행자: " + output["2"] + "명",
+                            description: "확진환자: " + output["0"] + "명\n격리 해제 조치 확진자: " + output["1"] + "명\n사망자: " + output["3"] + "명\n격리자: " + output["2"] + "명",
                             thumbnail: {
-                                imageUrl: "http://15.165.6.4:91/f/koreainfo.png",
-                                link: { web: "http://15.165.6.4:91/f/koreainfo.png" }
+                                imageUrl: "http://15.165.6.4:91/f/kinfo" + Buffer.from(output.title.replace(/.+?\((.+?)\)/, "$1"), "utf8").toString('base64') + ".png",
+                                link: { web: "http://15.165.6.4:91/f/kinfo" + Buffer.from(output.title.replace(/.+?\((.+?)\)/, "$1"), "utf8").toString('base64') + ".png" }
                             },
                             buttons: [{
                                 action: "share",
