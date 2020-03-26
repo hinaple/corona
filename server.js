@@ -9,8 +9,8 @@ const ImageDataURI = require('image-data-uri');
 
 require('events').EventEmitter.defaultMaxListeners = 15;
 
-const NAVER_ID = "FOR_GITHUB";
-const NAVER_PW = "FOR_GITHUB";
+const NAVER_ID = "FOT_GITHUB";
+const NAVER_PW = "FOT_GITHUB";
 
 app.use("/f", express.static("public"));
 
@@ -30,7 +30,7 @@ const newsOpt = {
 
 const tasks0 = [
     (callback) => {
-        request('http://ncov.mohw.go.kr/bdBoardList_Real.do?brdId=&brdGubun=&ncvContSeq=&contSeq=&board_id=&gubun=', (err, res, body) => {
+        request('http://ncov.mohw.go.kr/bdBoardList_Real.do?brdId=1&brdGubun=11&ncvContSeq=&contSeq=&board_id=&gubun=', (err, res, body) => {
             if(err) {
                 callback(err);
                 console.log(err);
@@ -42,11 +42,14 @@ const tasks0 = [
         let obj = {};
         const $ = cheerio.load(body);
         obj.title = $(".s_descript")[0].children[0].data;
+        obj.arr = [];
+        obj.plus = $("div[class=hdn]").first().find('td').last().text();
         let trs = $(".num").children("tbody").children('tr').children('td');
-        for(let i = 0; i < 4; i++) {
-            obj[i.toString()]
-            = trs[i].children[0].data.trim().replace(/\,/g, "")
-            .replace(/(\d+)\s*명/, "$1");
+        for(let i = 4; i < 12; i++) {
+            obj.arr.push(
+                trs[i].children[0].data.trim()
+                .replace(/(\d+)\s*명/, "$1")
+            );
         }
         callback(null, obj);
     }
@@ -110,9 +113,13 @@ const tasks3 = [
     }
 ];
 
-let makePng = (title, info0, info1, info2, info3) => new Promise((resolve, reject) => {
+let makePng = (title, arr, plus) => new Promise((resolve, reject) => {
     const canvas = createCanvas(600, 300);
     const ctx = canvas.getContext('2d');
+    
+    const t = ["확진자", "의심자", "완치자", "사망자"];
+    const n = [3, 6, 1, 2]
+    const x = 150;
     
     let grd = ctx.createLinearGradient(0, 0, 600, 300);
     grd.addColorStop(1, "#b34f93");
@@ -126,31 +133,24 @@ let makePng = (title, info0, info1, info2, info3) => new Promise((resolve, rejec
     ctx.beginPath();
     ctx.arc(550, 200, 250, 0, 2 * Math.PI);
     ctx.fill();
+
     ctx.fillStyle = "#fff";
     ctx.font = "30px Jua,sans-serif";
-    ctx.textAlign = "left";
     ctx.shadowColor = "#000";
     ctx.shadowBlur = 7;
-    ctx.fillText('확진자', 110, 80);
-    ctx.font = "bold 50px 'Jua',sans-serif";
-    ctx.fillText(info0 + '명', 200, 80);
-    
-    ctx.font = "30px 'Jua',sans-serif";
-    ctx.fillText('완치자', 110, 130);
-    ctx.font = "bold 50px 'Jua',sans-serif";
-    ctx.fillText(info1 + '명', 200, 130);
+    ctx.font = "bold 30px 'Jua',sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(plus + "▲", x - 25, 80);
+    ctx.textAlign = "left";
 
-    ctx.font = "30px 'Jua',sans-serif";
-    ctx.fillText('사망자', 110, 180);
-    ctx.font = "bold 50px 'Jua',sans-serif";
-    ctx.fillText(info2 + '명', 200, 180);
+    for(let i = 0; i < 4; i++) {
+        ctx.font = "30px 'Jua',sans-serif";
+        ctx.fillText(t[i], x + 25, 80 + (50 * i));
+        ctx.font = "bold 50px 'Jua',sans-serif";
+        ctx.fillText(arr[n[i]] + '명', x + 115, 80 + (50 * i));
+    }
 
-    ctx.font = "30px 'Jua',sans-serif";
-    ctx.fillText('격리자', 110, 230);
-    ctx.font = "bold 50px 'Jua',sans-serif";
-    ctx.fillText(info3 + '명', 200, 230);
-
-    ctx.fillRect(85, 45, 5, 190);
+    ctx.fillRect(x, 45, 5, 190);
 
     ctx.shadowBlur = 0;
     ctx.baseLine = "bottom";
@@ -160,7 +160,12 @@ let makePng = (title, info0, info1, info2, info3) => new Promise((resolve, rejec
     ctx.fillText('http://pf.kakao.com/_NBxgxbxb', 595, 275);
 
     dataUrl = canvas.toDataURL('image/png');
-    ImageDataURI.outputFile(dataUrl, "public/kinfo" + Buffer.from(title.replace(/.+?\((.+?)\)/, "$1"), "utf8").toString('base64')).then(result => {
+    ImageDataURI.outputFile(
+        dataUrl,
+        "public/kinfo" + Buffer.from(title.replace(/.+?\((.+?)\)/, "$1"), "utf8")
+        .toString('base64')
+    )
+    .then(result => {
         resolve();
     });
 });
@@ -177,7 +182,7 @@ app.post('/corona', (res, req) => {
                     outputs: [{
                         basicCard: {
                             title: output.title,
-                            description: "확진환자: " + output["0"] + "명\n격리 해제 조치 확진자: " + output["1"] + "명\n사망자: " + output["3"] + "명\n격리자: " + output["2"] + "명",
+                            description: "확진환자: " + output.arr[3] + "명\n격리 해제 조치 확진자: " + output.arr[1] + "명\n사망자: " + output.arr[2] + "명\n검사 진행자: " + output.arr[6] + "명",
                             thumbnail: {
                                 imageUrl: "http://15.165.6.4:91/f/kinfo" + Buffer.from(output.title.replace(/.+?\((.+?)\)/, "$1"), "utf8").toString('base64') + ".png",
                                 link: { web: "http://15.165.6.4:91/f/kinfo" + Buffer.from(output.title.replace(/.+?\((.+?)\)/, "$1"), "utf8").toString('base64') + ".png" }
@@ -190,11 +195,56 @@ app.post('/corona', (res, req) => {
                     }]
                 }
             };
-            await makePng(output.title, output["0"], output["1"], output["3"], output["2"]);
+            await makePng(output.title, output.arr, output.plus);
             req.status(200).send(obj);
         }
     });
 });
+
+app.post('/daily', (res, req) => {
+    async.waterfall(tasks0, (err, output) => {
+        if(err) req.status(502).send();
+        else {
+            let temp = output.title.replace(/.+?\((\d*\.\d*)\..+?\)/, "$1").replace(/\./, "");
+            if(temp.length < 4) temp = '0' + temp;
+            console.log(temp);
+            req.status(200).send({
+                version: "2.0",
+                template: {
+                    outputs: [{
+                        carousel: {
+                            type: "basicCard",
+                            items: [
+                                {
+                                    title: "일일 확진자 변화 추세",
+                                    thumbnail: {
+                                        imageUrl: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata1_mini_" + temp + ".png",
+                                        link: { web: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata1_mini_" + temp + ".png" }
+                                    },
+                                    buttons: [{
+                                        action: "share",
+                                        label: "공유하기"
+                                    }]
+                                },
+                                {
+                                    title: "일일 완치자 변화 추세",
+                                    thumbnail: {
+                                        imageUrl: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata2_mini_" + temp + ".png",
+                                        link: { web: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata2_mini_" + temp + ".png" }
+                                    },
+                                    buttons: [{
+                                        action: "share",
+                                        label: "공유하기"
+                                    }]
+                                }
+                            ]
+                        }
+                    }]
+                }
+            });
+        }
+    })
+})
 
 app.post('/world', (res, req) => {
     async.waterfall(tasks1, (err, output) => {
