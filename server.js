@@ -14,6 +14,12 @@ const NAVER_PW = "FOT_GITHUB";
 
 app.use("/f", express.static("public"));
 
+function findMax(arr) {
+    let temp = arr[0].data;
+    for(let i = 0; i < arr.length; i++) if(temp < arr[i].data) temp = arr[i].data;
+    return temp;
+}
+
 const newsOpt = {
     uri: "https://openapi.naver.com/v1/search/news.json",
     qs: {
@@ -91,7 +97,7 @@ const tasks1 = [
 
 const head = ["감염자", "사망자", "사망률"];
 
-const tasks3 = [
+const tasks2 = [
     tasks1[0],
     (body, callback) => {
         let arr = [];
@@ -112,6 +118,23 @@ const tasks3 = [
         callback(null, { text: str.trim() });
     }
 ];
+
+const tasks3 = [
+    tasks0[0],
+    (body, callback) => {
+        const $ = cheerio.load(body);
+        let obj = { title: $(".s_descript")[0].children[0].data, arr0: [], arr1: [] };
+        $("div[class=hdn]").first().find('td').each((i, item) => {
+            if(i % 3 == 0) obj.arr0.push({ title: Number($(item).text().replace(/\d{4}\d{2}(\d{2})/, "$1")) });
+            else if(i % 3 == 2) obj.arr0[Math.floor(i / 3)].data = Number($(item).text().trim());
+        });
+        $("div[class=hdn]").last().find('td').each((i, item) => {
+            if(i % 3 == 0) obj.arr1.push({ title: Number($(item).text().replace(/\d{4}\d{2}(\d{2})/, "$1")) });
+            else if(i % 3 == 2) obj.arr1[Math.floor(i / 3)].data = Number($(item).text().trim());
+        });
+        callback(null, obj);
+    }
+]
 
 let makePng = (title, arr, plus) => new Promise((resolve, reject) => {
     const canvas = createCanvas(600, 300);
@@ -140,7 +163,7 @@ let makePng = (title, arr, plus) => new Promise((resolve, reject) => {
     ctx.shadowBlur = 7;
     ctx.font = "bold 30px 'Jua',sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(plus + "▲", x - 25, 80);
+    ctx.fillText(plus + "▲", x - 10, 80);
     ctx.textAlign = "left";
 
     for(let i = 0; i < 4; i++) {
@@ -168,6 +191,80 @@ let makePng = (title, arr, plus) => new Promise((resolve, reject) => {
     .then(result => {
         resolve();
     });
+});
+
+let makeGraph = (arr, fm) => new Promise((resolve, reject) => {
+    const x = 560;
+    const y = 400;
+    const t = 30;
+    const max = findMax(arr);
+    const ymax = Math.floor((max + 100) / 100) * 100;
+    const ycell = y / ymax;
+    const xcell = x / (arr.length + 1);
+
+    const canvas = createCanvas(x + (2 * t), y + (2 * t));
+    const ctx = canvas.getContext('2d');
+
+    let grd = ctx.createLinearGradient(0, 0, x + (2 * t), y + (2 * t));
+    grd.addColorStop(1, "#b34f93");
+    grd.addColorStop(0, "#640064");
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, x + (2 * t), y + (2 * t));
+    grd = ctx.createLinearGradient(0, 0, x + (2 * t), y + (2 * t));
+    grd.addColorStop(0, "#ff00ff");
+    grd.addColorStop(1, "#ff7575");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(550, 300, 350, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+    ctx.shadowBlur = 7;
+    ctx.font = "bold 20px Jua,sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#fff";
+
+    ctx.beginPath();
+    ctx.moveTo(t, t);
+    ctx.lineTo(t, y + t);
+    ctx.lineTo(x + t, y + t);
+    ctx.stroke();
+
+    ctx.fillText(ymax + "(명)", t - 20, t - 10);
+    ctx.fillText(0, t / 2, y + (2 * t) - 10);
+
+    ctx.textAlign = "center";
+    ctx.lineWidth = 10;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(xcell + t, (ymax - arr[0].data) * ycell + t);
+    for(let i = 1; i < arr.length; i++) {
+        ctx.lineTo(xcell * (i + 1) + t, (ymax - arr[i].data) * ycell + t);
+    }
+    ctx.stroke();
+    
+    ctx.fillStyle = "#2b014a";
+    for(let i = 0; i < arr.length; i++) {
+        ctx.beginPath();
+        ctx.arc(xcell * (i + 1) + t, (ymax - arr[i].data) * ycell + t, 10, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+
+    ctx.shadowColor = "#000";
+    ctx.fillStyle = "#fff";
+    ctx.shadowBlur = 5;
+    for(let i = 0; i < arr.length; i++) {
+        ctx.fillText(arr[i].data, xcell * (i + 1) + t, (ymax - arr[i].data) * ycell + t - 15);
+        ctx.fillText(arr[i].title, xcell * (i + 1) + t, y + t + 20);
+    }
+
+    dataUrl = canvas.toDataURL('image/png');
+    ImageDataURI.outputFile(dataUrl, "public/" + fm).then(() => {
+        resolve();
+    })
 });
 
 app.use(logger('dev', {}));
@@ -202,12 +299,15 @@ app.post('/corona', (res, req) => {
 });
 
 app.post('/daily', (res, req) => {
-    async.waterfall(tasks0, (err, output) => {
+    async.waterfall(tasks3, async (err, output) => {
         if(err) req.status(502).send();
         else {
-            let temp = output.title.replace(/.+?\((\d*\.\d*)\..+?\)/, "$1").replace(/\./, "");
-            if(temp.length < 4) temp = '0' + temp;
-            console.log(temp);
+            let fmt = Buffer.from(
+                output.title.replace(/.+?\((.+?)\)/, "$1"),
+                "utf8"
+            ).toString('base64');
+            await makeGraph(output.arr0, "graph0" + fmt);
+            await makeGraph(output.arr1, "graph1" + fmt)
             req.status(200).send({
                 version: "2.0",
                 template: {
@@ -217,9 +317,10 @@ app.post('/daily', (res, req) => {
                             items: [
                                 {
                                     title: "일일 확진자 변화 추세",
+                                    description: "사진을 눌러서 크게 보기",
                                     thumbnail: {
-                                        imageUrl: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata1_mini_" + temp + ".png",
-                                        link: { web: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata1_mini_" + temp + ".png" }
+                                        imageUrl: "http://15.165.6.4:91/f/" + "graph0" + fmt + ".png",
+                                        link: { web: "http://15.165.6.4:91/f/" + "graph0" + fmt + ".png" }
                                     },
                                     buttons: [{
                                         action: "share",
@@ -228,9 +329,10 @@ app.post('/daily', (res, req) => {
                                 },
                                 {
                                     title: "일일 완치자 변화 추세",
+                                    description: "사진을 눌러서 크게 보기",
                                     thumbnail: {
-                                        imageUrl: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata2_mini_" + temp + ".png",
-                                        link: { web: "http://ncov.mohw.go.kr/static/image/main_chart/live_pdata2_mini_" + temp + ".png" }
+                                        imageUrl: "http://15.165.6.4:91/f/" + "graph1" + fmt + ".png",
+                                        link: { web: "http://15.165.6.4:91/f/" + "graph1" + fmt + ".png" }
                                     },
                                     buttons: [{
                                         action: "share",
@@ -291,7 +393,7 @@ app.post('/news', (res, req) => {
 });
 
 app.post('/center', (res, req) => {
-    async.waterfall(tasks3, (err, output) => {
+    async.waterfall(tasks2, (err, output) => {
         if(err) req.status(502).send();
         else {
             req.status(200).send(output);
